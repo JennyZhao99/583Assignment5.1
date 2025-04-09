@@ -1,109 +1,124 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.17;
 
-import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol"; //This allows role-based access control through _grantRole() and the modifier onlyRole
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol"; //This contract needs to interact with ERC20 tokens
 
-contract AMM {
-    // Token addresses
-    address public immutable tokenA_addr;
-    address public immutable tokenB_addr;
+contract AMM is AccessControl{
+    bytes32 public constant LP_ROLE = keccak256("LP_ROLE");
+	uint256 public invariant;
+	address public tokenA;
+	address public tokenB;
+	uint256 feebps = 3; //The fee in basis points (i.e., the fee should be feebps/10000)
 
-    // Token reserves
-    uint256 public reserveA;
-    uint256 public reserveB;
+	event Swap( address indexed _inToken, address indexed _outToken, uint256 inAmt, uint256 outAmt );
+	event LiquidityProvision( address indexed _from, uint256 AQty, uint256 BQty );
+	event Withdrawal( address indexed _from, address indexed recipient, uint256 AQty, uint256 BQty );
 
-    // Liquidity provider
-    address public liquidityProvider;
+	/*
+		Constructor sets the addresses of the two tokens
+	*/
+    constructor( address _tokenA, address _tokenB ) {
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender );
+        _grantRole(LP_ROLE, msg.sender);
 
-    // Trading fee in basis points (e.g., 30 for 0.3%)
-    uint256 public constant FEE_BPS = 30;
+		require( _tokenA != address(0), 'Token address cannot be 0' );
+		require( _tokenB != address(0), 'Token address cannot be 0' );
+		require( _tokenA != _tokenB, 'Tokens cannot be the same' );
+		tokenA = _tokenA;
+		tokenB = _tokenB;
 
-    constructor(address _tokenA, address _tokenB) {
-        tokenA_addr = _tokenA;
-        tokenB_addr = _tokenB;
     }
 
-    function provideLiquidity(uint256 tokenA_quantity, uint256 tokenB_quantity) external {
-        // your code here
-        require(reserveA == 0 && reserveB == 0, "Liquidity already provided");
-        require(tokenA_quantity > 0 && tokenB_quantity > 0, "Amounts must be greater than 0");
 
-        // Transfer tokens from sender to contract
-        bool successA = IERC20(tokenA_addr).transferFrom(msg.sender, address(this), tokenA_quantity);
-        bool successB = IERC20(tokenB_addr).transferFrom(msg.sender, address(this), tokenB_quantity);
-        require(successA && successB, "Token transfer failed");
+	function getTokenAddress( uint256 index ) public view returns(address) {
+		require( index < 2, 'Only two tokens' );
+		if( index == 0 ) {
+			return tokenA;
+		} else {
+			return tokenB;
+		}
+	}
 
-        // Update reserves
-        reserveA = tokenA_quantity;
-        reserveB = tokenB_quantity;
 
-        // Set liquidity provider
-        liquidityProvider = msg.sender;
-    }
 
-    function tradeTokens(address sell_token, uint256 sell_quantity) external returns (uint256) {
-        // your code here
-        require(sell_token == tokenA_addr || sell_token == tokenB_addr, "Invalid token");
-        require(sell_quantity > 0, "Amount must be greater than 0");
-        require(reserveA > 0 && reserveB > 0, "No liquidity");
+	/*
+		The main trading functions
+		
+		User provides sellToken and sellAmount
 
-        uint256 amountOut;
-        address buy_token;
-        
-        if (sell_token == tokenA_addr) {
-            // Calculate amount out with fee (fee is deducted from input)
-            uint256 sell_quantity_minus_fee = sell_quantity * (10000 - FEE_BPS) / 10000;
-            amountOut = getAmountOut(sell_quantity_minus_fee, reserveA, reserveB);
-            
-            // Update reserves
-            reserveA += sell_quantity;
-            reserveB -= amountOut;
-            
-            buy_token = tokenB_addr;
-        } else {
-            // Calculate amount out with fee (fee is deducted from input)
-            uint256 sell_quantity_minus_fee = sell_quantity * (10000 - FEE_BPS) / 10000;
-            amountOut = getAmountOut(sell_quantity_minus_fee, reserveB, reserveA);
-            
-            // Update reserves
-            reserveB += sell_quantity;
-            reserveA -= amountOut;
-            
-            buy_token = tokenA_addr;
-        }
+		The contract must calculate buyAmount using the formula:
+	*/
+	function tradeTokens(address sell_token, uint256 sell_quantity) external returns (uint256) {
+		// your code here
+		require(sell_token == tokenA_addr || sell_token == tokenB_addr, "Invalid token");
+		uint256 amountOut;
+		
+		if (sell_token == tokenA_addr) {
+			uint256 amountInWithFee = sell_quantity * (10000 - FEE_BPS) / 10000;
+			amountOut = (reserveB * amountInWithFee) / (reserveA + amountInWithFee);
+			íí
+			IERC20(tokenA_addr).transferFrom(msg.sender, address(this), sell_quantity);
+			IERC20(tokenB_addr).transfer(msg.sender, amountOut);
+			
+			reserveA += sell_quantity;
+			reserveB -= amountOut;
+		} else {
+			uint256 amountInWithFee = sell_quantity * (10000 - FEE_BPS) / 10000;
+			amountOut = (reserveA * amountInWithFee) / (reserveB + amountInWithFee);
+			
+			IERC20(tokenB_addr).transferFrom(msg.sender, address(this), sell_quantity);
+			IERC20(tokenA_addr).transfer(msg.sender, amountOut);
+			
+			reserveB += sell_quantity;
+			reserveA -= amountOut;
+		}
+		
+		invariant = reserveA * reserveB;
+		return amountOut;
+	}
 
-        // Transfer tokens
-        bool successIn = IERC20(sell_token).transferFrom(msg.sender, address(this), sell_quantity);
-        bool successOut = IERC20(buy_token).transfer(msg.sender, amountOut);
-        require(successIn && successOut, "Token transfer failed");
 
-        return amountOut;
-    }
 
-    function withdrawLiquidity(address recipient, uint256 amtA, uint256 amtB) external {
-        // your code here
-        require(msg.sender == liquidityProvider, "Only liquidity provider can withdraw");
-        require(amtA <= reserveA && amtB <= reserveB, "Insufficient reserves");
+	/*
+		Use the ERC20 transferFrom to "pull" amtA of tokenA and amtB of tokenB from the sender
+	*/
+	function provideLiquidity(uint256 tokenA_quantity, uint256 tokenB_quantity) external {
+		// your code here
+		require(reserveA == 0 && reserveB == 0, "Liquidity already provided");
+		bool successA = IERC20(tokenA_addr).transferFrom(msg.sender, address(this), tokenA_quantity);
+		bool successB = IERC20(tokenB_addr).transferFrom(msg.sender, address(this), tokenB_quantity);
+		require(successA && successB, "Token transfer failed");
+		
+		reserveA = tokenA_quantity;
+		reserveB = tokenB_quantity;
+		_setupRole(LP_ROLE, msg.sender); // 根据原始模板设置LP角色
+		invariant = reserveA * reserveB;
+	}
 
-        // Update reserves
-        reserveA -= amtA;
-        reserveB -= amtB;
 
-        // Transfer tokens
-        bool successA = IERC20(tokenA_addr).transfer(recipient, amtA);
-        bool successB = IERC20(tokenB_addr).transfer(recipient, amtB);
-        require(successA && successB, "Token transfer failed");
-    }
 
-    // Helper function to calculate amount out based on Uniswap invariant
-    function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut) internal pure returns (uint256) {
-        require(amountIn > 0, "Amount in must be greater than 0");
-        require(reserveIn > 0 && reserveOut > 0, "Reserves must be greater than 0");
-        
-        uint256 amountInWithFee = amountIn * 9970; // Applying 0.3% fee (30 bps)
-        uint256 numerator = amountInWithFee * reserveOut;
-        uint256 denominator = (reserveIn * 10000) + amountInWithFee;
-        
-        return numerator / denominator;
-    }
+
+	/*
+		Use the ERC20 transfer function to send amtA of tokenA and amtB of tokenB to the target recipient
+		The modifier onlyRole(LP_ROLE) 
+	*/
+	function withdrawLiquidity(address recipient, uint256 amtA, uint256 amtB) public onlyRole(LP_ROLE) {
+		// your code here
+		require(amtA <= reserveA && amtB <= reserveB, "Insufficient reserves");
+		
+		if (amtA > 0) {
+			IERC20(tokenA_addr).transfer(recipient, amtA);
+			reserveA -= amtA;
+		}
+		if (amtB > 0) {
+			IERC20(tokenB_addr).transfer(recipient, amtB);
+			reserveB -= amtB;
+		}
+		
+		invariant = reserveA * reserveB;
+		emit Withdrawal(msg.sender, recipient, amtA, amtB);
+	}
+
+
 }
