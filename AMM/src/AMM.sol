@@ -27,9 +27,7 @@ contract AMM is AccessControl{
 		require( _tokenA != _tokenB, 'Tokens cannot be the same' );
 		tokenA = _tokenA;
 		tokenB = _tokenB;
-
     }
-
 
 	function getTokenAddress( uint256 index ) public view returns(address) {
 		require( index < 2, 'Only two tokens' );
@@ -39,8 +37,6 @@ contract AMM is AccessControl{
 			return tokenB;
 		}
 	}
-
-
 
 	/*
 		The main trading functions
@@ -56,18 +52,18 @@ contract AMM is AccessControl{
 		
 		if (sell_token == tokenA) {
 			uint256 amountInWithFee = sell_quantity * (10000 - feebps) / 10000;
-			amountOut = (ERC20(tokenB).balanceOf(address(this)) * amountInWithFee / 
-					(ERC20(tokenA).balanceOf(address(this)) + amountInWithFee),
+			amountOut = (ERC20(tokenB).balanceOf(address(this)) * amountInWithFee) / 
+					(ERC20(tokenA).balanceOf(address(this)) + amountInWithFee);
 			
-			require(ERC20(tokenA).transferFrom(msg.sender, address(this), sell_quantity), "Transfer failed"),
-			require(ERC20(tokenB).transfer(msg.sender, amountOut), "Transfer failed"),
+			require(ERC20(tokenA).transferFrom(msg.sender, address(this), sell_quantity), "Transfer failed");
+			require(ERC20(tokenB).transfer(msg.sender, amountOut), "Transfer failed");
 		} else {
 			uint256 amountInWithFee = sell_quantity * (10000 - feebps) / 10000;
-			amountOut = (ERC20(tokenA).balanceOf(address(this)) * amountInWithFee / 
-					(ERC20(tokenB).balanceOf(address(this)) + amountInWithFee),
+			amountOut = (ERC20(tokenA).balanceOf(address(this)) * amountInWithFee) / 
+					(ERC20(tokenB).balanceOf(address(this)) + amountInWithFee);
 			
-			require(ERC20(tokenB).transferFrom(msg.sender, address(this), sell_quantity), "Transfer failed"),
-			require(ERC20(tokenA).transfer(msg.sender, amountOut), "Transfer failed"),
+			require(ERC20(tokenB).transferFrom(msg.sender, address(this), sell_quantity), "Transfer failed");
+			require(ERC20(tokenA).transfer(msg.sender, amountOut), "Transfer failed");
 		}
 		
 		invariant = ERC20(tokenA).balanceOf(address(this)) * ERC20(tokenB).balanceOf(address(this));
@@ -75,9 +71,6 @@ contract AMM is AccessControl{
 		return amountOut;
 	}
 	
-
-
-
 	/*
 		Use the ERC20 transferFrom to "pull" amtA of tokenA and amtB of tokenB from the sender
 	*/
@@ -93,9 +86,6 @@ contract AMM is AccessControl{
 		invariant = tokenA_quantity * tokenB_quantity;
 		emit LiquidityProvision(msg.sender, tokenA_quantity, tokenB_quantity);
 	}
-
-
-
 
 	/*
 		Use the ERC20 transfer function to send amtA of tokenA and amtB of tokenB to the target recipient
@@ -118,6 +108,4 @@ contract AMM is AccessControl{
 		invariant = ERC20(tokenA).balanceOf(address(this)) * ERC20(tokenB).balanceOf(address(this));
 		emit Withdrawal(msg.sender, recipient, amtA, amtB);
 	}
-
-
 }
