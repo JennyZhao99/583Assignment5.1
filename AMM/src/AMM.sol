@@ -51,33 +51,30 @@ contract AMM is AccessControl{
 	*/
 	function tradeTokens(address sell_token, uint256 sell_quantity) external returns (uint256) {
 		// your code here
-		require(sell_token == tokenA_addr || sell_token == tokenB_addr, "Invalid token");
+		require(sell_token == tokenA || sell_token == tokenB, "Invalid token");
 		uint256 amountOut;
 		
-		if (sell_token == tokenA_addr) {
-			uint256 amountInWithFee = sell_quantity * (10000 - FEE_BPS) / 10000;
-			amountOut = (reserveB * amountInWithFee) / (reserveA + amountInWithFee);
+		if (sell_token == tokenA) {
+			uint256 amountInWithFee = sell_quantity * (10000 - feebps) / 10000;
+			amountOut = (ERC20(tokenB).balanceOf(address(this)) * amountInWithFee / 
+					(ERC20(tokenA).balanceOf(address(this)) + amountInWithFee);
 			
-			IERC20(tokenA_addr).transferFrom(msg.sender, address(this), sell_quantity);
-			IERC20(tokenB_addr).transfer(msg.sender, amountOut);
-			
-			reserveA += sell_quantity;
-			reserveB -= amountOut;
+			require(ERC20(tokenA).transferFrom(msg.sender, address(this), sell_quantity), "Transfer failed");
+			require(ERC20(tokenB).transfer(msg.sender, amountOut), "Transfer failed");
 		} else {
-			uint256 amountInWithFee = sell_quantity * (10000 - FEE_BPS) / 10000;
-			amountOut = (reserveA * amountInWithFee) / (reserveB + amountInWithFee);
+			uint256 amountInWithFee = sell_quantity * (10000 - feebps) / 10000;
+			amountOut = (ERC20(tokenA).balanceOf(address(this)) * amountInWithFee / 
+					(ERC20(tokenB).balanceOf(address(this)) + amountInWithFee);
 			
-			IERC20(tokenB_addr).transferFrom(msg.sender, address(this), sell_quantity);
-			IERC20(tokenA_addr).transfer(msg.sender, amountOut);
-			
-			reserveB += sell_quantity;
-			reserveA -= amountOut;
+			require(ERC20(tokenB).transferFrom(msg.sender, address(this), sell_quantity), "Transfer failed");
+			require(ERC20(tokenA).transfer(msg.sender, amountOut), "Transfer failed");
 		}
 		
-		invariant = reserveA * reserveB;
+		invariant = ERC20(tokenA).balanceOf(address(this)) * ERC20(tokenB).balanceOf(address(this));
+		emit Swap(sell_token, sell_token == tokenA ? tokenB : tokenA, sell_quantity, amountOut);
 		return amountOut;
 	}
-
+	
 
 
 
@@ -86,15 +83,15 @@ contract AMM is AccessControl{
 	*/
 	function provideLiquidity(uint256 tokenA_quantity, uint256 tokenB_quantity) external {
 		// your code here
-		require(reserveA == 0 && reserveB == 0, "Liquidity already provided");
-		bool successA = IERC20(tokenA_addr).transferFrom(msg.sender, address(this), tokenA_quantity);
-		bool successB = IERC20(tokenB_addr).transferFrom(msg.sender, address(this), tokenB_quantity);
-		require(successA && successB, "Token transfer failed");
+		require(ERC20(tokenA).balanceOf(address(this)) == 0 && 
+			ERC20(tokenB).balanceOf(address(this)) == 0, "Liquidity already provided");
 		
-		reserveA = tokenA_quantity;
-		reserveB = tokenB_quantity;
-		_setupRole(LP_ROLE, msg.sender); // 根据原始模板设置LP角色
-		invariant = reserveA * reserveB;
+		require(ERC20(tokenA).transferFrom(msg.sender, address(this), tokenA_quantity), "Transfer A failed");
+		require(ERC20(tokenB).transferFrom(msg.sender, address(this), tokenB_quantity), "Transfer B failed");
+		
+		_grantRole(LP_ROLE, msg.sender);
+		invariant = tokenA_quantity * tokenB_quantity;
+		emit LiquidityProvision(msg.sender, tokenA_quantity, tokenB_quantity);
 	}
 
 
@@ -106,18 +103,19 @@ contract AMM is AccessControl{
 	*/
 	function withdrawLiquidity(address recipient, uint256 amtA, uint256 amtB) public onlyRole(LP_ROLE) {
 		// your code here
-		require(amtA <= reserveA && amtB <= reserveB, "Insufficient reserves");
+		require(amtA > 0 || amtB > 0, 'Cannot withdraw 0');
+		require(recipient != address(0), 'Cannot withdraw to 0 address');
 		
-		if (amtA > 0) {
-			IERC20(tokenA_addr).transfer(recipient, amtA);
-			reserveA -= amtA;
+		if(amtA > 0) {
+			require(amtA <= ERC20(tokenA).balanceOf(address(this)), "Insufficient TokenA balance");
+			require(ERC20(tokenA).transfer(recipient, amtA), "Transfer failed");
 		}
-		if (amtB > 0) {
-			IERC20(tokenB_addr).transfer(recipient, amtB);
-			reserveB -= amtB;
+		if(amtB > 0) {
+			require(amtB <= ERC20(tokenB).balanceOf(address(this)), "Insufficient TokenB balance");
+			require(ERC20(tokenB).transfer(recipient, amtB), "Transfer failed");
 		}
 		
-		invariant = reserveA * reserveB;
+		invariant = ERC20(tokenA).balanceOf(address(this)) * ERC20(tokenB).balanceOf(address(this));
 		emit Withdrawal(msg.sender, recipient, amtA, amtB);
 	}
 
