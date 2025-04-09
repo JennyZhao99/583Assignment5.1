@@ -57,7 +57,7 @@ contract AMM is AccessControl{
 		if (sell_token == tokenA) {
 			uint256 amountInWithFee = sell_quantity * (10000 - feebps) / 10000;
 			amountOut = (ERC20(tokenB).balanceOf(address(this)) * amountInWithFee / 
-					(ERC20(tokenA).balanceOf(address(this)) + amountInWithFee);
+					(ERC20(tokenA).balanceOf(address(this)) + amountInWithFee),
 			
 			require(ERC20(tokenA).transferFrom(msg.sender, address(this), sell_quantity), "Transfer failed");
 			require(ERC20(tokenB).transfer(msg.sender, amountOut), "Transfer failed");
