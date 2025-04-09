@@ -75,18 +75,13 @@ contract AMM is AccessControl{
 		Use the ERC20 transferFrom to "pull" amtA of tokenA and amtB of tokenB from the sender
 	*/
 	function provideLiquidity(uint256 tokenA_quantity, uint256 tokenB_quantity) external {
-		// 只允许在合约还没有流动性时提供流动性
-		require(ERC20(tokenA).balanceOf(address(this)) == 0 && 
-			ERC20(tokenB).balanceOf(address(this)) == 0, "Liquidity already provided");
-		
+		// 允许多个用户提供流动性
 		require(tokenA_quantity > 0 && tokenB_quantity > 0, "Cannot provide zero liquidity");
 		
 		require(ERC20(tokenA).transferFrom(msg.sender, address(this), tokenA_quantity), "Transfer A failed");
 		require(ERC20(tokenB).transferFrom(msg.sender, address(this), tokenB_quantity), "Transfer B failed");
 		
-		// 赋予流动性提供者角色
-		_grantRole(LP_ROLE, msg.sender);
-		invariant = tokenA_quantity * tokenB_quantity;
+		invariant = ERC20(tokenA).balanceOf(address(this)) * ERC20(tokenB).balanceOf(address(this));
 		emit LiquidityProvision(msg.sender, tokenA_quantity, tokenB_quantity);
 	}
 
