@@ -46,7 +46,6 @@ contract AMM is AccessControl{
 		The contract must calculate buyAmount using the formula:
 	*/
 	function tradeTokens(address sell_token, uint256 sell_quantity) external returns (uint256) {
-		// your code here
 		require(sell_token == tokenA || sell_token == tokenB, "Invalid token");
 		uint256 amountOut;
 		
@@ -75,7 +74,6 @@ contract AMM is AccessControl{
 		Use the ERC20 transferFrom to "pull" amtA of tokenA and amtB of tokenB from the sender
 	*/
 	function provideLiquidity(uint256 tokenA_quantity, uint256 tokenB_quantity) external {
-		// 允许多个用户提供流动性
 		require(tokenA_quantity > 0 && tokenB_quantity > 0, "Cannot provide zero liquidity");
 		
 		require(ERC20(tokenA).transferFrom(msg.sender, address(this), tokenA_quantity), "Transfer A failed");
@@ -90,7 +88,6 @@ contract AMM is AccessControl{
 		The modifier onlyRole(LP_ROLE) 
 	*/
 	function withdrawLiquidity(address recipient, uint256 amtA, uint256 amtB) public onlyRole(LP_ROLE) {
-		// your code here
 		require(amtA > 0 || amtB > 0, 'Cannot withdraw 0');
 		require(recipient != address(0), 'Cannot withdraw to 0 address');
 		
